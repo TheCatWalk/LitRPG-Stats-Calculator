@@ -10,3 +10,4 @@ class BaseComponent(QWidget):
 
     def update_display(self):
         pass
+

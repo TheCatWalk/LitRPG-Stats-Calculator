@@ -5,6 +5,7 @@ from PyQt5.QtCore import pyqtSignal
 
 class LevelUpComponent(BaseComponent):
     levelUpSignal = pyqtSignal()
+    
     def __init__(self, calculator, parent=None):
         self.calculator = calculator
         super().__init__(parent)
@@ -38,3 +39,4 @@ class LevelUpComponent(BaseComponent):
         # This method is left empty as the level display 
         # is updated directly in the level_up method
         pass
+
