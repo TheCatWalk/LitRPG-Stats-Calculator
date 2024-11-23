@@ -1,0 +1,344 @@
+DeepStats/
+    app.py
+    requirements.txt
+    backend/
+        __init__.py
+        core/
+            base_calculator.py
+            calculator_factory.py
+            stats_calculator.py
+            __init__.py
+    export/
+        export_project.py
+        project_export.txt
+    gui/
+        main_window.py
+        ui_factory.py
+        __init__.py
+        components/
+            base_component.py
+            level_up_component.py
+            stats_component.py
+
+
+# File: C:\Users\galaxy\Documents\VsCode\DeepStats\app.py
+import sys
+from PyQt5.QtWidgets import QApplication
+from gui.main_window import MainWindow
+
+if __name__ == "__main__":
+    app = QApplication(sys.argv)
+    main_window = MainWindow()
+    main_window.show()
+    sys.exit(app.exec_())
+
+# File: C:\Users\galaxy\Documents\VsCode\DeepStats\backend\__init__.py
+
+
+# File: C:\Users\galaxy\Documents\VsCode\DeepStats\backend\core\base_calculator.py
+from abc import ABC, abstractmethod
+
+class BaseCalculator(ABC):
+    @abstractmethod
+    def calculate(self):
+        pass
+
+    @abstractmethod
+    def update(self, *args, **kwargs):
+        pass
+
+# File: C:\Users\galaxy\Documents\VsCode\DeepStats\backend\core\calculator_factory.py
+from .stats_calculator import StatsCalculator
+
+class CalculatorFactory:
+    @staticmethod
+    def get_calculator(calculator_type):
+        if calculator_type == "stats":
+            return StatsCalculator()
+        # Add more calculator types here as needed
+        else:
+            raise ValueError(f"Unknown calculator type: {calculator_type}")
+
+# File: C:\Users\galaxy\Documents\VsCode\DeepStats\backend\core\stats_calculator.py
+from .base_calculator import BaseCalculator
+
+class StatsCalculator(BaseCalculator):
+    def __init__(self):
+        self.primary_stats = {
+            "Body": ["Endurance", "Vitality", "Strength", "Agility", "Dexterity"],
+            "Mind": ["Intelligence", "Memory", "Perception", "Clarity", "Focus"],
+            "Spirit": ["Adaptability", "Density", "Purity", "Fortitude", "Magnitude"]
+        }
+        self.stats = {stat: {"auto": 1, "free": 0, "train": 0, "weight": 0.20, "constraint": 20.00, "total": 1} 
+                      for primary in self.primary_stats.values() for stat in primary}
+        self.primary_totals = {primary: 1.0 for primary in self.primary_stats}
+        self.free_points = 0
+        self.train_points = 0
+        self.calculate()
+
+    def calculate(self):
+        for primary, secondary_stats in self.primary_stats.items():
+            total_points = sum(sum(self.stats[stat][cat] for cat in ['auto', 'free', 'train']) for stat in secondary_stats)
+            total_manual_auto_points = sum(self.stats[stat]['auto'] + self.stats[stat]['free'] for stat in secondary_stats)
+            primary_total = 0
+
+            for stat in secondary_stats:
+                auto = self.stats[stat]['auto']
+                free = self.stats[stat]['free']
+                train = self.stats[stat]['train']
+                total = auto + free + train
+
+                weight = (auto + free) / total_manual_auto_points if total_manual_auto_points > 0 else 0
+                normalized_weight = weight / sum((self.stats[s]['auto'] + self.stats[s]['free']) / total_manual_auto_points
+                                                 for s in secondary_stats) if total_manual_auto_points > 0 else 0
+
+                self.stats[stat]['weight'] = weight
+                self.stats[stat]['total'] = total
+                self.stats[stat]['constraint'] = (total / total_points) * 100 if total_points > 0 else 0
+
+                primary_total += total * normalized_weight
+
+            self.primary_totals[primary] = primary_total
+
+    def update(self, stat, category, change):
+        if category == 'free':
+            if self.free_points - change < 0 or self.stats[stat][category] + change < 0:
+                return False
+            self.free_points -= change
+        elif category == 'train':
+            if self.train_points - change < 0 or self.stats[stat][category] + change < 0:
+                return False
+            self.train_points -= change
+        
+        self.stats[stat][category] += change
+        self.calculate()
+        return True
+
+    def level_up(self, primary):
+        for stat in self.primary_stats[primary]:
+            self.stats[stat]['auto'] += 1
+        self.free_points += 5
+        self.train_points += 5
+        self.calculate()
+
+# File: C:\Users\galaxy\Documents\VsCode\DeepStats\backend\core\__init__.py
+from .calculator_factory import CalculatorFactory
+
+# File: C:\Users\galaxy\Documents\VsCode\DeepStats\gui\main_window.py
+from PyQt5.QtWidgets import QMainWindow, QWidget, QVBoxLayout
+from backend.core import CalculatorFactory
+from .ui_factory import UIFactory
+
+class MainWindow(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        self.calculator = CalculatorFactory.get_calculator("stats")
+        self.components = {}
+        self.init_ui()
+
+    def init_ui(self):
+        self.setWindowTitle("LitRPG Stats Calculator")
+        self.setGeometry(100, 100, 1200, 800)
+
+        central_widget = QWidget()
+        self.setCentralWidget(central_widget)
+
+        main_layout = QVBoxLayout(central_widget)
+
+        # Level Up component
+        self.components['level_up'] = UIFactory.create_component("level_up", self.calculator)
+        self.components['level_up'].levelUpSignal.connect(self.update_all_components)
+        main_layout.addWidget(self.components['level_up'])
+        
+        # Stats component
+        self.components['stats'] = UIFactory.create_component("stats", self.calculator)
+        main_layout.addWidget(self.components['stats'])
+
+    def update_all_components(self):
+        for component in self.components.values():
+            component.update_display()
+
+# File: C:\Users\galaxy\Documents\VsCode\DeepStats\gui\ui_factory.py
+from .components.stats_component import StatsComponent
+from .components.level_up_component import LevelUpComponent
+
+class UIFactory:
+    @staticmethod
+    def create_component(component_type, *args, **kwargs):
+        if component_type == "stats":
+            return StatsComponent(*args, **kwargs)
+        elif component_type == "level_up":
+            return LevelUpComponent(*args, **kwargs)
+        # Add more component types here as needed
+        else:
+            raise ValueError(f"Unknown component type: {component_type}")
+
+# File: C:\Users\galaxy\Documents\VsCode\DeepStats\gui\__init__.py
+
+
+# File: C:\Users\galaxy\Documents\VsCode\DeepStats\gui\components\base_component.py
+from PyQt5.QtWidgets import QWidget
+
+class BaseComponent(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.init_ui()
+
+    def init_ui(self):
+        pass
+
+    def update_display(self):
+        pass
+
+# File: C:\Users\galaxy\Documents\VsCode\DeepStats\gui\components\level_up_component.py
+from PyQt5.QtWidgets import QHBoxLayout, QLabel, QPushButton, QButtonGroup, QRadioButton
+from .base_component import BaseComponent
+from PyQt5.QtCore import pyqtSignal
+
+
+class LevelUpComponent(BaseComponent):
+    levelUpSignal = pyqtSignal()
+    def __init__(self, calculator, parent=None):
+        self.calculator = calculator
+        super().__init__(parent)
+
+    def init_ui(self):
+        layout = QHBoxLayout(self)
+        layout.addWidget(QLabel("Level:"))
+        self.level_label = QLabel("0")
+        layout.addWidget(self.level_label)
+        
+        self.level_up_group = QButtonGroup(self)
+        for primary in self.calculator.primary_stats:
+            radio = QRadioButton(primary)
+            self.level_up_group.addButton(radio)
+            layout.addWidget(radio)
+        
+        level_up_button = QPushButton("Level Up")
+        level_up_button.clicked.connect(self.level_up)
+        layout.addWidget(level_up_button)
+        layout.addStretch(1)
+
+    def level_up(self):
+        selected_button = self.level_up_group.checkedButton()
+        if selected_button:
+            primary = selected_button.text()
+            self.calculator.level_up(primary)
+            self.level_label.setText(str(int(self.level_label.text()) + 1))
+            self.levelUpSignal.emit()
+            
+    def update_display(self):
+        # This method is left empty as the level display 
+        # is updated directly in the level_up method
+        pass
+
+# File: C:\Users\galaxy\Documents\VsCode\DeepStats\gui\components\stats_component.py
+from PyQt5.QtWidgets import QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QPushButton, QFrame, QScrollArea, QWidget
+from .base_component import BaseComponent
+
+class StatsComponent(BaseComponent):
+    def __init__(self, calculator, parent=None):
+        self.calculator = calculator
+        super().__init__(parent)
+
+    def init_ui(self):
+        layout = QVBoxLayout(self)
+
+        # Free and Train pools
+        pool_layout = QHBoxLayout()
+        self.free_pool_label = QLabel("Free Points: 0")
+        self.train_pool_label = QLabel("Train Points: 0")
+        pool_layout.addWidget(self.free_pool_label)
+        pool_layout.addWidget(self.train_pool_label)
+        layout.addLayout(pool_layout)
+
+        # Stats
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        layout.addWidget(scroll_area)
+
+        stats_widget = QWidget()
+        scroll_area.setWidget(stats_widget)
+        stats_layout = QHBoxLayout(stats_widget)
+
+        self.stat_widgets = {}
+        for primary, secondary_stats in self.calculator.primary_stats.items():
+            primary_frame = QFrame()
+            primary_frame.setFrameStyle(QFrame.Box | QFrame.Raised)
+            primary_layout = QVBoxLayout(primary_frame)
+            primary_layout.addWidget(QLabel(f"<b>{primary}</b>"))
+
+            for stat in secondary_stats:
+                stat_layout = QGridLayout()
+                stat_layout.addWidget(QLabel(f"<b>{stat}</b>"), 0, 0, 1, 4)
+                
+                self.stat_widgets[stat] = {}
+                for i, category in enumerate(['auto', 'free', 'train']):
+                    stat_layout.addWidget(QLabel(f"{category.capitalize()}:"), i+1, 0)
+                    value_label = QLabel(str(self.calculator.stats[stat][category]))
+                    stat_layout.addWidget(value_label, i+1, 1)
+                    self.stat_widgets[stat][category] = value_label
+                    if category != 'auto':
+                        minus_button = QPushButton("-")
+                        minus_button.clicked.connect(lambda _, s=stat, c=category: self.update_stat(s, c, -1))
+                        stat_layout.addWidget(minus_button, i+1, 2)
+                        plus_button = QPushButton("+")
+                        plus_button.clicked.connect(lambda _, s=stat, c=category: self.update_stat(s, c, 1))
+                        stat_layout.addWidget(plus_button, i+1, 3)
+                        self.stat_widgets[stat][f"{category}_minus"] = minus_button
+                        self.stat_widgets[stat][f"{category}_plus"] = plus_button
+
+                weight_label = QLabel(f"Weight: {self.calculator.stats[stat]['weight']:.2f}")
+                stat_layout.addWidget(weight_label, 4, 0, 1, 2)
+                constraint_label = QLabel(f"Constraint: {self.calculator.stats[stat]['constraint']:.2f}%")
+                stat_layout.addWidget(constraint_label, 4, 2, 1, 2)
+                total_label = QLabel(f"Total: {self.calculator.stats[stat]['total']}")
+                stat_layout.addWidget(total_label, 5, 0, 1, 4)
+
+                self.stat_widgets[stat]['weight'] = weight_label
+                self.stat_widgets[stat]['constraint'] = constraint_label
+                self.stat_widgets[stat]['total'] = total_label
+
+                primary_layout.addLayout(stat_layout)
+
+            primary_total_label = QLabel(f"Primary {primary}: {self.calculator.primary_totals[primary]:.2f}")
+            primary_layout.addWidget(primary_total_label)
+            self.stat_widgets[primary] = {'total': primary_total_label}
+
+            stats_layout.addWidget(primary_frame)
+
+    def update_stat(self, stat, category, change):
+        if self.calculator.update(stat, category, change):
+            self.update_display()
+
+    def update_display(self):
+        for stat, widgets in self.stat_widgets.items():
+            if stat in self.calculator.primary_stats:
+                widgets['total'].setText(f"Primary {stat}: {self.calculator.primary_totals[stat]:.2f}")
+            else:
+                for category in ['auto', 'free', 'train']:
+                    widgets[category].setText(str(self.calculator.stats[stat][category]))
+                widgets['weight'].setText(f"Weight: {self.calculator.stats[stat]['weight']:.2f}")
+                
+                constraint_value = self.calculator.stats[stat]['constraint']
+                constraint_text = f"Constraint: {constraint_value:.2f}%"
+                widgets['constraint'].setText(constraint_text)
+                
+                if constraint_value >= 40:
+                    widgets['constraint'].setStyleSheet("color: red;")
+                elif constraint_value <= 10:
+                    widgets['constraint'].setStyleSheet("color: maroon;")
+                else:
+                    widgets['constraint'].setStyleSheet("")
+                
+                widgets['total'].setText(f"Total: {self.calculator.stats[stat]['total']}")
+
+                for category in ['free', 'train']:
+                    minus_button = widgets[f"{category}_minus"]
+                    plus_button = widgets[f"{category}_plus"]
+                    minus_button.setEnabled(self.calculator.stats[stat][category] > 0)
+                    plus_button.setEnabled(getattr(self.calculator, f"{category}_points") > 0)
+
+        self.free_pool_label.setText(f"Free Points: {self.calculator.free_points}")
+        self.train_pool_label.setText(f"Train Points: {self.calculator.train_points}")
+
